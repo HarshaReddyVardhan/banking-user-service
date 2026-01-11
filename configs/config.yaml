@@ -1,0 +1,73 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+  shutdown_timeout: 15s
+
+database:
+  host: localhost
+  port: 5432
+  database: user_service
+  username: postgres
+  password: "" # Use environment variable
+  ssl_mode: require
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+
+redis:
+  host: localhost
+  port: 6379
+  password: "" # Use environment variable
+  db: 0
+  pool_size: 10
+  default_ttl: 5m
+
+mongodb:
+  uri: "mongodb://localhost:27017"
+  database: user_preferences
+  connect_timeout: 10s
+  max_pool_size: 50
+
+kafka:
+  brokers:
+    - localhost:9092
+  audit_topic: user-audit-events
+  event_topic: user-events
+  required_acks: -1
+  enable_idempotent: true
+
+encryption:
+  current_key_version: 1
+  key_rotation_days: 90
+  vault_enabled: false
+  # encryption_keys: []  # Use environment variable
+  # audit_hmac_secret: ""  # Use environment variable
+
+auth:
+  jwt_public_key_path: /etc/user-service/keys/jwt.pub
+  jwt_issuer: banking-auth-service
+  jwt_audience:
+    - banking-user-service
+
+ratelimit:
+  per_user_per_minute: 100
+  per_ip_per_minute: 50
+  profile_updates_per_hour: 10
+  address_changes_per_hour: 20
+  burst_size: 10
+  enable_inmemory_fallback: true
+
+tracing:
+  enabled: true
+  service_name: user-service
+  otlp_endpoint: localhost:4317
+  sample_rate: 0.1
+
+logging:
+  level: info
+  format: json
+  output_path: stdout
+  enable_pii_mask: true
+  enable_request_id: true
