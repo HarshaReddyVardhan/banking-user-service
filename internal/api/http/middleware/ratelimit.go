@@ -16,20 +16,20 @@ import (
 
 // RateLimitConfig holds rate limiting configuration
 type RateLimitConfig struct {
-	PerUserPerMinute      int
-	PerIPPerMinute        int
-	ProfileUpdatesPerHour int
-	AddressChangesPerHour int
-	BurstSize             int
+	PerUserPerMinute       int
+	PerIPPerMinute         int
+	ProfileUpdatesPerHour  int
+	AddressChangesPerHour  int
+	BurstSize              int
 	EnableInMemoryFallback bool
 }
 
 // RateLimiter handles multi-tier rate limiting
 type RateLimiter struct {
-	redis            *redis.Client
-	cb               *resilience.CircuitBreaker
-	cfg              RateLimitConfig
-	inMemoryLimiter  *inMemoryLimiter
+	redis           *redis.Client
+	cb              *resilience.CircuitBreaker
+	cfg             RateLimitConfig
+	inMemoryLimiter *inMemoryLimiter
 }
 
 // NewRateLimiter creates a new rate limiter
@@ -77,13 +77,13 @@ func (rl *RateLimiter) RateLimit() echo.MiddlewareFunc {
 func (rl *RateLimiter) getRateLimitParams(c echo.Context) (key string, limit int, window time.Duration) {
 	// Default: per-IP limiting
 	ip := c.RealIP()
-	key = fmt.Sprintf("ratelimit:ip:%s", ip)
+	key = fmt.Sprintf("v1:ratelimit:ip:%s", ip)
 	limit = rl.cfg.PerIPPerMinute
 	window = time.Minute
 
 	// If authenticated, use per-user limiting (higher limits)
 	if userID, ok := GetUserIDFromEcho(c); ok {
-		key = fmt.Sprintf("ratelimit:user:%s", userID.String())
+		key = fmt.Sprintf("v1:ratelimit:user:%s", userID.String())
 		limit = rl.cfg.PerUserPerMinute
 
 		// Apply resource-specific limits for certain endpoints
@@ -92,11 +92,11 @@ func (rl *RateLimiter) getRateLimitParams(c echo.Context) (key string, limit int
 
 		if method == "PUT" || method == "POST" || method == "DELETE" {
 			if containsAny(path, "profile", "users/me") && method == "PUT" {
-				key = fmt.Sprintf("ratelimit:user:%s:profile", userID.String())
+				key = fmt.Sprintf("v1:ratelimit:user:%s:profile", userID.String())
 				limit = rl.cfg.ProfileUpdatesPerHour
 				window = time.Hour
 			} else if containsAny(path, "addresses") {
-				key = fmt.Sprintf("ratelimit:user:%s:address", userID.String())
+				key = fmt.Sprintf("v1:ratelimit:user:%s:address", userID.String())
 				limit = rl.cfg.AddressChangesPerHour
 				window = time.Hour
 			}
@@ -139,12 +139,12 @@ func (rl *RateLimiter) checkRedisRateLimit(ctx context.Context, key string, limi
 
 	// Sliding window rate limiting using Redis
 	pipe := rl.redis.Pipeline()
-	
+
 	// Increment counter
 	incrCmd := pipe.Incr(ctx, key)
 	// Set expiration if new key
 	pipe.Expire(ctx, key, window)
-	
+
 	_, err := pipe.Exec(ctx)
 	if err != nil {
 		return nil, err
@@ -170,15 +170,15 @@ type inMemoryLimiter struct {
 }
 
 type bucket struct {
-	count    int
-	resetAt  time.Time
+	count   int
+	resetAt time.Time
 }
 
 func newInMemoryLimiter() *inMemoryLimiter {
 	limiter := &inMemoryLimiter{
 		buckets: make(map[string]*bucket),
 	}
-	
+
 	// Cleanup goroutine
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
@@ -186,7 +186,7 @@ func newInMemoryLimiter() *inMemoryLimiter {
 			limiter.cleanup()
 		}
 	}()
-	
+
 	return limiter
 }
 
