@@ -50,12 +50,9 @@ func NewUserService(
 
 // GetProfile retrieves a user profile by ID
 func (s *UserService) GetProfile(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
-	// Try cache first
-	cached, err := s.cache.GetProfile(ctx, userID)
-	if err == nil && cached != nil {
-		// Cache hit - but we need full profile, so fetch from DB
-		// Cache is for quick status checks, not full profile
-	}
+	// Note: We skip cache here because we need the full profile including PII (decrypted),
+	// and the cache only stores a minimal summary (UserProfileCache).
+	// For status checks, use GetUserSummary or IsActive which use the cache.
 
 	// Get from database
 	user, err := s.userRepo.GetByID(ctx, userID)
