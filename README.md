@@ -36,21 +36,27 @@ internal/
 
 ## Quick Start
 
+### The Easy Way (Docker Compose)
+This tries to start everything: the app, database, cache, and message broker.
+
+```bash
+docker-compose up --build
+```
+
+The application will be available at http://localhost:8080.
+
+### Manual Setup
+If you prefer to run locally without Docker Compose:
+
 ```bash
 # Build
 make build
 
-# Run locally
+# Run locally (requires Postgres, Redis, Kafka running)
 make run
 
 # Run tests
 make test
-
-# Build Docker image
-make docker-build
-
-# Run with Docker
-make docker-run
 ```
 
 ## Configuration
