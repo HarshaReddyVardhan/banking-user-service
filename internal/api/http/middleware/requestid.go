@@ -18,14 +18,22 @@ const (
 )
 
 // RequestID middleware generates or extracts request IDs for tracing
+// SECURITY: Validates incoming request IDs to prevent injection attacks
 func RequestID() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			// Try to get request ID from header (from API gateway)
 			requestID := c.Request().Header.Get(RequestIDHeader)
-			
-			// Generate new ID if not provided
-			if requestID == "" {
+
+			// SECURITY: Validate request ID format to prevent log injection
+			// Only accept valid UUIDs or generate a new one
+			if requestID != "" {
+				if !isValidRequestID(requestID) {
+					// Invalid format - generate new ID instead of using potentially malicious value
+					requestID = uuid.New().String()
+				}
+			} else {
+				// Generate new ID if not provided
 				requestID = uuid.New().String()
 			}
 
@@ -42,6 +50,30 @@ func RequestID() echo.MiddlewareFunc {
 			return next(c)
 		}
 	}
+}
+
+// isValidRequestID validates the format of a request ID
+// Accepts UUID format (with or without hyphens) and limits length
+func isValidRequestID(id string) bool {
+	// SECURITY: Reject excessively long IDs that could be injection attempts
+	if len(id) > 64 {
+		return false
+	}
+
+	// Reject IDs with potentially dangerous characters
+	for _, c := range id {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			return false
+		}
+	}
+
+	// Try to parse as UUID (most common case)
+	if _, err := uuid.Parse(id); err == nil {
+		return true
+	}
+
+	// Allow alphanumeric IDs up to 64 chars for compatibility with other tracing systems
+	return len(id) >= 16 && len(id) <= 64
 }
 
 // GetRequestID extracts request ID from context
