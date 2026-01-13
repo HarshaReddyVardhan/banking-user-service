@@ -3,6 +3,7 @@ package crypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -17,11 +18,11 @@ import (
 
 // Common errors
 var (
-	ErrInvalidCiphertext   = errors.New("invalid ciphertext format")
-	ErrKeyNotFound         = errors.New("encryption key not found for version")
-	ErrInvalidKeyLength    = errors.New("invalid key length, must be 32 bytes for AES-256")
-	ErrDecryptionFailed    = errors.New("decryption failed")
-	ErrEncryptionFailed    = errors.New("encryption failed")
+	ErrInvalidCiphertext = errors.New("invalid ciphertext format")
+	ErrKeyNotFound       = errors.New("encryption key not found for version")
+	ErrInvalidKeyLength  = errors.New("invalid key length, must be 32 bytes for AES-256")
+	ErrDecryptionFailed  = errors.New("decryption failed")
+	ErrEncryptionFailed  = errors.New("encryption failed")
 )
 
 // FieldEncryptor handles AES-256-GCM encryption for PII fields
@@ -166,14 +167,13 @@ func (e *FieldEncryptor) DecryptString(encrypted string) (string, int, error) {
 	return string(plaintext), version, nil
 }
 
-// Hash creates a deterministic SHA-256 hash for lookups
+// Hash creates a deterministic HMAC-SHA256 hash for lookups
+// SECURITY: Uses proper HMAC construction for keyed hashing
 // This is one-way and cannot be reversed
 func (e *FieldEncryptor) Hash(data string) string {
-	// Use HMAC-like construction for added security
-	h := sha256.New()
-	h.Write(e.hmacSecret)
-	h.Write([]byte(data))
-	return hex.EncodeToString(h.Sum(nil))
+	mac := hmac.New(sha256.New, e.hmacSecret)
+	mac.Write([]byte(data))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // CurrentKeyVersion returns the current encryption key version
