@@ -24,11 +24,12 @@ type Config struct {
 
 // ServerConfig holds HTTP server configuration
 type ServerConfig struct {
-	Host            string        `mapstructure:"host"`
-	Port            int           `mapstructure:"port"`
-	ReadTimeout     time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
-	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	Host               string        `mapstructure:"host"`
+	Port               int           `mapstructure:"port"`
+	ReadTimeout        time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout       time.Duration `mapstructure:"write_timeout"`
+	ShutdownTimeout    time.Duration `mapstructure:"shutdown_timeout"`
+	CORSAllowedOrigins []string      `mapstructure:"cors_allowed_origins"` // SECURITY: Empty = no CORS, explicit origins only
 }
 
 // DatabaseConfig holds PostgreSQL configuration
@@ -101,11 +102,11 @@ type AuthConfig struct {
 
 // RateLimitConfig holds rate limiting settings
 type RateLimitConfig struct {
-	PerUserPerMinute       int `mapstructure:"per_user_per_minute"`
-	PerIPPerMinute         int `mapstructure:"per_ip_per_minute"`
-	ProfileUpdatesPerHour  int `mapstructure:"profile_updates_per_hour"`
-	AddressChangesPerHour  int `mapstructure:"address_changes_per_hour"`
-	BurstSize              int `mapstructure:"burst_size"`
+	PerUserPerMinute       int  `mapstructure:"per_user_per_minute"`
+	PerIPPerMinute         int  `mapstructure:"per_ip_per_minute"`
+	ProfileUpdatesPerHour  int  `mapstructure:"profile_updates_per_hour"`
+	AddressChangesPerHour  int  `mapstructure:"address_changes_per_hour"`
+	BurstSize              int  `mapstructure:"burst_size"`
 	EnableInMemoryFallback bool `mapstructure:"enable_inmemory_fallback"`
 }
 
@@ -242,6 +243,11 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("database host is required")
 	}
 
+	// SECURITY: Require SSL for database connections
+	if cfg.Database.SSLMode == "" || cfg.Database.SSLMode == "disable" {
+		return fmt.Errorf("database SSL mode must be enabled (require, verify-ca, or verify-full)")
+	}
+
 	if cfg.Encryption.VaultEnabled && cfg.Encryption.VaultAddress == "" {
 		return fmt.Errorf("vault address is required when vault is enabled")
 	}
@@ -252,6 +258,31 @@ func validate(cfg *Config) error {
 
 	if cfg.Encryption.AuditHMACSecret == "" {
 		return fmt.Errorf("audit HMAC secret is required")
+	}
+
+	// SECURITY: Enforce minimum HMAC secret length for cryptographic security
+	if len(cfg.Encryption.AuditHMACSecret) < 32 {
+		return fmt.Errorf("audit HMAC secret must be at least 32 characters for security")
+	}
+
+	// SECURITY: Validate rate limits are reasonable
+	if cfg.RateLimit.PerUserPerMinute <= 0 {
+		return fmt.Errorf("per_user_per_minute rate limit must be positive")
+	}
+	if cfg.RateLimit.PerIPPerMinute <= 0 {
+		return fmt.Errorf("per_ip_per_minute rate limit must be positive")
+	}
+	// SECURITY: Cap rate limits to prevent abuse if misconfigured
+	if cfg.RateLimit.PerUserPerMinute > 10000 {
+		return fmt.Errorf("per_user_per_minute rate limit too high (max 10000)")
+	}
+	if cfg.RateLimit.PerIPPerMinute > 1000 {
+		return fmt.Errorf("per_ip_per_minute rate limit too high (max 1000)")
+	}
+
+	// SECURITY: Validate key rotation period (PCI-DSS requires rotation at least annually)
+	if cfg.Encryption.KeyRotationDays > 365 {
+		return fmt.Errorf("key rotation period exceeds 365 days, violates security best practices")
 	}
 
 	return nil
@@ -268,4 +299,13 @@ func (c *DatabaseConfig) DSN() string {
 // RedisAddr returns the Redis address
 func (c *RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+// GetCORSAllowedOrigins returns the configured CORS allowed origins
+// SECURITY: Returns empty slice if not configured (no CORS allowed - most secure default)
+func (c *Config) GetCORSAllowedOrigins() []string {
+	if len(c.Server.CORSAllowedOrigins) == 0 {
+		return []string{} // Empty = no cross-origin requests allowed
+	}
+	return c.Server.CORSAllowedOrigins
 }
