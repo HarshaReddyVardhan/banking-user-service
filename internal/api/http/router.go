@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -187,7 +188,7 @@ func (r *Router) setupRoutes(deps RouterDeps) {
 
 // Start starts the HTTP server
 func (r *Router) Start() error {
-	addr := r.cfg.Server.Host + ":" + string(rune(r.cfg.Server.Port))
+	addr := fmt.Sprintf("%s:%d", r.cfg.Server.Host, r.cfg.Server.Port)
 	r.log.Info("Starting HTTP server", logger.Component("http"), logger.Operation("start"))
 	return r.echo.Start(addr)
 }
