@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/banking/user-service/internal/api/http/handlers"
 	apihttp "github.com/banking/user-service/internal/api/http"
 	"github.com/banking/user-service/internal/config"
 	"github.com/banking/user-service/internal/crypto"
@@ -130,6 +129,8 @@ func run() error {
 
 	// Initialize repositories
 	userRepo := postgres.NewUserRepository(pgPool, encryptor, circuitBreakers.Postgres)
+	addressRepo := postgres.NewAddressRepository(pgPool, encryptor, circuitBreakers.Postgres)
+	deviceRepo := postgres.NewDeviceRepository(pgPool, encryptor, circuitBreakers.Postgres)
 	userCache := rediscache.NewUserCache(redisClient, circuitBreakers.Redis, cfg.Redis.DefaultTTL)
 
 	// Initialize Kafka audit producer
@@ -147,13 +148,28 @@ func run() error {
 	}
 
 	// Initialize services
+	hmacSecret := []byte(cfg.Encryption.AuditHMACSecret)
 	userService := service.NewUserService(
 		userRepo,
 		userCache,
 		auditProducer,
 		log,
-		[]byte(cfg.Encryption.AuditHMACSecret),
+		hmacSecret,
 	)
+	addressService := service.NewAddressService(
+		addressRepo,
+		auditProducer,
+		log,
+		hmacSecret,
+	)
+	deviceService := service.NewDeviceService(
+		deviceRepo,
+		auditProducer,
+		log,
+		hmacSecret,
+	)
+	// Preference service uses interface - would need MongoDB repo
+	// For now, pass nil and handle gracefully in router
 
 	// Load JWT public key
 	authPublicKey, err := loadPublicKey(cfg.Auth.JWTPublicKeyPath)
@@ -167,9 +183,9 @@ func run() error {
 		Logger:         log,
 		Health:         healthChecker,
 		UserService:    userService,
-		AddressService: nil, // TODO: Initialize
-		DeviceService:  nil, // TODO: Initialize  
-		PrefService:    nil, // TODO: Initialize
+		AddressService: addressService,
+		DeviceService:  deviceService,
+		PrefService:    nil, // TODO: Initialize with MongoDB repo
 		RedisClient:    redisClient,
 		CircuitBreaker: circuitBreakers.Redis,
 		AuthPublicKey:  authPublicKey,
