@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -21,20 +22,20 @@ const (
 
 // Common errors
 var (
-	ErrUnauthorized      = errors.New("unauthorized")
-	ErrForbidden         = errors.New("forbidden")
-	ErrInvalidToken      = errors.New("invalid token")
-	ErrTokenExpired      = errors.New("token expired")
-	ErrMissingAuth       = errors.New("missing authorization header")
-	ErrInvalidSubject    = errors.New("invalid subject in token")
+	ErrUnauthorized   = errors.New("unauthorized")
+	ErrForbidden      = errors.New("forbidden")
+	ErrInvalidToken   = errors.New("invalid token")
+	ErrTokenExpired   = errors.New("token expired")
+	ErrMissingAuth    = errors.New("missing authorization header")
+	ErrInvalidSubject = errors.New("invalid subject in token")
 )
 
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
-	PublicKey      interface{}    // RSA or ECDSA public key
-	Issuer         string
-	Audiences      []string
-	SkipPaths      []string       // Paths to skip auth (e.g., health checks)
+	PublicKey interface{} // RSA or ECDSA public key
+	Issuer    string
+	Audiences []string
+	SkipPaths []string // Paths to skip auth (e.g., health checks)
 }
 
 // Claims represents JWT claims
@@ -112,9 +113,17 @@ func Auth(cfg AuthConfig) echo.MiddlewareFunc {
 
 func validateToken(tokenString string, cfg AuthConfig) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		// Validate signing method
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, errors.New("unexpected signing method")
+		// SECURITY: Validate signing method to prevent algorithm confusion attacks (CVE-2015-2951)
+		// Only accept RSA or ECDSA - never accept HS* with public key
+		switch token.Method.(type) {
+		case *jwt.SigningMethodRSA:
+			// RSA is acceptable
+		case *jwt.SigningMethodRSAPSS:
+			// RSA-PSS is acceptable
+		case *jwt.SigningMethodECDSA:
+			// ECDSA is acceptable
+		default:
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return cfg.PublicKey, nil
 	})
