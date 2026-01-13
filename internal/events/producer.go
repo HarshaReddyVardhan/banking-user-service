@@ -24,22 +24,22 @@ var (
 
 // AuditProducer handles producing audit events to Kafka
 type AuditProducer struct {
-	producer   sarama.AsyncProducer
-	topic      string
-	cb         *resilience.CircuitBreaker
-	buffer     *resilience.EventBuffer
-	log        *logger.Logger
-	closed     bool
-	mu         sync.RWMutex
-	wg         sync.WaitGroup
+	producer sarama.AsyncProducer
+	topic    string
+	cb       *resilience.CircuitBreaker
+	buffer   *resilience.EventBuffer
+	log      *logger.Logger
+	closed   bool
+	mu       sync.RWMutex
+	wg       sync.WaitGroup
 }
 
 // AuditProducerConfig holds configuration for audit producer
 type AuditProducerConfig struct {
-	Brokers         []string
-	Topic           string
-	BufferSize      int
-	RequireAcks     sarama.RequiredAcks
+	Brokers          []string
+	Topic            string
+	BufferSize       int
+	RequireAcks      sarama.RequiredAcks
 	EnableIdempotent bool
 }
 
@@ -223,11 +223,11 @@ func NewEventProducer(brokers []string, topic string, cb *resilience.CircuitBrea
 
 // UserEvent represents a user-related domain event
 type UserEvent struct {
-	EventID    string    `json:"event_id"`
-	EventType  string    `json:"event_type"`
-	UserID     string    `json:"user_id"`
-	Timestamp  time.Time `json:"timestamp"`
-	Data       any       `json:"data,omitempty"`
+	EventID   string    `json:"event_id"`
+	EventType string    `json:"event_type"`
+	UserID    string    `json:"user_id"`
+	Timestamp time.Time `json:"timestamp"`
+	Data      any       `json:"data,omitempty"`
 }
 
 // ProduceUserEvent sends a user event to Kafka
@@ -252,8 +252,14 @@ func (p *EventProducer) ProduceUserEvent(ctx context.Context, eventType string, 
 	}
 
 	_, err = p.cb.ExecuteContext(ctx, func(ctx context.Context) (interface{}, error) {
-		p.producer.Input() <- msg
-		return nil, nil
+		select {
+		case p.producer.Input() <- msg:
+			return nil, nil
+		case <-time.After(5 * time.Second):
+			return nil, errors.New("producer input timeout")
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	})
 
 	return err
