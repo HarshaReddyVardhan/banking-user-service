@@ -167,6 +167,7 @@ func (rl *RateLimiter) checkRedisRateLimit(ctx context.Context, key string, limi
 type inMemoryLimiter struct {
 	mu      sync.RWMutex
 	buckets map[string]*bucket
+	done    chan struct{}
 }
 
 type bucket struct {
@@ -177,17 +178,29 @@ type bucket struct {
 func newInMemoryLimiter() *inMemoryLimiter {
 	limiter := &inMemoryLimiter{
 		buckets: make(map[string]*bucket),
+		done:    make(chan struct{}),
 	}
 
-	// Cleanup goroutine
+	// Cleanup goroutine with proper shutdown support
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
-		for range ticker.C {
-			limiter.cleanup()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				limiter.cleanup()
+			case <-limiter.done:
+				return
+			}
 		}
 	}()
 
 	return limiter
+}
+
+// Stop gracefully stops the cleanup goroutine
+func (l *inMemoryLimiter) Stop() {
+	close(l.done)
 }
 
 func (l *inMemoryLimiter) check(key string, limit int, window time.Duration) (allowed bool, remaining int, resetAt int64, err error) {
