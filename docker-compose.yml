@@ -27,7 +27,7 @@ services:
     restart: on-failure
 
   postgres:
-    image: postgres:14-alpine
+    image: postgres:15-alpine
     ports:
       - "5432:5432"
     environment:
@@ -59,7 +59,7 @@ services:
       retries: 5
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.3.0
+    image: confluentinc/cp-zookeeper:7.5.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -67,7 +67,7 @@ services:
       - banking-network
 
   kafka:
-    image: confluentinc/cp-kafka:7.3.0
+    image: confluentinc/cp-kafka:7.5.0
     depends_on:
       - zookeeper
     ports:
