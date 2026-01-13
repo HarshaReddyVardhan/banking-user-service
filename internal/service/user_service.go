@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -63,13 +64,14 @@ func (s *UserService) GetProfile(ctx context.Context, userID uuid.UUID) (*domain
 		return nil, err
 	}
 
-	// Update cache
-	go func() {
-		ctx := context.Background()
-		if err := s.cache.SetProfile(ctx, redis.UserFromCache(user)); err != nil {
+	// Update cache in background with timeout to prevent goroutine leaks
+	go func(u *domain.User) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.cache.SetProfile(ctx, redis.UserFromCache(u)); err != nil {
 			s.log.Warn("failed to update cache", logger.ErrorField(err))
 		}
-	}()
+	}(user)
 
 	return user, nil
 }
@@ -116,13 +118,14 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID uuid.UUID, req *
 		return nil, err
 	}
 
-	// Invalidate cache
-	go func() {
-		ctx := context.Background()
-		if err := s.cache.InvalidateUser(ctx, userID); err != nil {
+	// Invalidate cache in background with timeout to prevent goroutine leaks
+	go func(id uuid.UUID) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.cache.InvalidateUser(ctx, id); err != nil {
 			s.log.Warn("failed to invalidate cache", logger.ErrorField(err))
 		}
-	}()
+	}(userID)
 
 	// Emit audit event
 	s.emitAuditEvent(ctx, userID, audit.ActionUpdate, audit.ResourceProfile, userID.String(), changedFields, clientIP, requestID)
@@ -140,13 +143,14 @@ func (s *UserService) DeleteProfile(ctx context.Context, userID uuid.UUID, clien
 		return err
 	}
 
-	// Invalidate cache
-	go func() {
-		ctx := context.Background()
-		if err := s.cache.InvalidateUser(ctx, userID); err != nil {
+	// Invalidate cache in background with timeout to prevent goroutine leaks
+	go func(id uuid.UUID) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.cache.InvalidateUser(ctx, id); err != nil {
 			s.log.Warn("failed to invalidate cache", logger.ErrorField(err))
 		}
-	}()
+	}(userID)
 
 	// Emit audit event
 	s.emitAuditEvent(ctx, userID, audit.ActionDelete, audit.ResourceProfile, userID.String(), []string{"deleted_at", "status"}, clientIP, requestID)
@@ -173,13 +177,14 @@ func (s *UserService) GetUserSummary(ctx context.Context, userID uuid.UUID) (*do
 
 	summary := user.ToSummary()
 
-	// Update cache
-	go func() {
-		ctx := context.Background()
-		if err := s.cache.SetSummary(ctx, summary); err != nil {
+	// Update cache in background with timeout to prevent goroutine leaks
+	go func(s *UserService, sum *domain.UserSummary) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.cache.SetSummary(ctx, sum); err != nil {
 			s.log.Warn("failed to update summary cache", logger.ErrorField(err))
 		}
-	}()
+	}(s, summary)
 
 	return summary, nil
 }
