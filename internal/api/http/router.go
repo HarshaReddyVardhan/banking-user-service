@@ -14,6 +14,7 @@ import (
 	"github.com/banking/user-service/internal/config"
 	"github.com/banking/user-service/internal/pkg/health"
 	"github.com/banking/user-service/internal/pkg/logger"
+	"github.com/banking/user-service/internal/pkg/validator"
 	"github.com/banking/user-service/internal/resilience"
 	"github.com/banking/user-service/internal/service"
 )
@@ -45,6 +46,7 @@ func NewRouter(deps RouterDeps) *Router {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
+	e.Validator = validator.New()
 
 	router := &Router{
 		echo:   e,
@@ -72,23 +74,40 @@ func (r *Router) setupMiddleware(deps RouterDeps) {
 	// Logging middleware
 	r.echo.Use(middleware.Logging(deps.Logger))
 
-	// CORS middleware
+	// CORS middleware - SECURITY: Restrict origins in production
+	// Empty AllowOrigins means no cross-origin requests allowed (most secure)
+	// Configure specific origins via CORS_ALLOWED_ORIGINS environment variable
+	allowedOrigins := deps.Config.GetCORSAllowedOrigins()
 	r.echo.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
-		AllowOrigins:     []string{"*"}, // Restrict in production
-		AllowMethods:     []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
+		AllowOrigins:     allowedOrigins,
+		AllowMethods:     []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete, http.MethodOptions},
 		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, middleware.RequestIDHeader},
 		ExposeHeaders:    []string{middleware.RequestIDHeader, "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"},
 		AllowCredentials: true,
+		MaxAge:           3600, // 1 hour preflight cache
 	}))
 
-	// Security headers
+	// Security headers - OWASP recommended configuration
 	r.echo.Use(echomiddleware.SecureWithConfig(echomiddleware.SecureConfig{
 		XSSProtection:         "1; mode=block",
 		ContentTypeNosniff:    "nosniff",
 		XFrameOptions:         "DENY",
 		HSTSMaxAge:            31536000, // 1 year
-		ContentSecurityPolicy: "default-src 'self'",
+		HSTSPreloadEnabled:    true,
+		HSTSExcludeSubdomains: false,
+		ContentSecurityPolicy: "default-src 'self'; frame-ancestors 'none'; upgrade-insecure-requests",
+		ReferrerPolicy:        "strict-origin-when-cross-origin",
 	}))
+
+	// Add custom security headers not covered by Echo's Secure middleware
+	r.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Response().Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=()")
+			c.Response().Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+			c.Response().Header().Set("Pragma", "no-cache")
+			return next(c)
+		}
+	})
 
 	// Body limit
 	r.echo.Use(echomiddleware.BodyLimit("1M"))
