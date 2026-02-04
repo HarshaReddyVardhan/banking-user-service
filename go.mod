@@ -1,6 +1,6 @@
 module github.com/banking/user-service
 
-go 1.22
+go 1.24.0
 
 require (
 	github.com/IBM/sarama v1.43.0
